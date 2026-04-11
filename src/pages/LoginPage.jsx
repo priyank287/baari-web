@@ -1,11 +1,29 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const { login } = useAuth()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    navigate('/queue')
+    setError('')
+    setLoading(true)
+    try {
+      const user = await login(email, password)
+      if (user.role === 'SUPER_ADMIN') navigate('/admin')
+      else if (user.role === 'HOSPITAL_ADMIN') navigate('/admin')
+      else navigate('/queue')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -30,6 +48,14 @@ export default function LoginPage() {
             <p className="text-on-surface-variant text-sm mt-1">Please enter your credentials to access the terminal.</p>
           </header>
           <form className="space-y-6" onSubmit={handleSubmit}>
+            {/* Error Banner */}
+            {error && (
+              <div className="flex items-center gap-2 bg-error/10 border border-error/20 text-error rounded-lg px-4 py-3 text-sm">
+                <span className="material-symbols-outlined text-lg shrink-0">error</span>
+                {error}
+              </div>
+            )}
+
             {/* Email Field */}
             <div className="space-y-1.5">
               <label className="block text-on-surface font-label text-[11px] font-bold uppercase tracking-wider pl-1">Email Address</label>
@@ -39,9 +65,11 @@ export default function LoginPage() {
                 </div>
                 <input
                   className="block w-full pl-11 pr-4 py-3 bg-surface-container-low border-0 rounded-lg text-on-surface placeholder:text-outline text-sm focus:ring-0 focus:bg-surface-container-lowest focus:outline focus:outline-1 focus:outline-secondary transition-all duration-200"
-                  placeholder="staff@ethereal.clinic"
+                  placeholder="staff@baari.com"
                   required
                   type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
                 />
               </div>
             </div>
@@ -50,7 +78,6 @@ export default function LoginPage() {
             <div className="space-y-1.5">
               <div className="flex justify-between items-center pr-1">
                 <label className="block text-on-surface font-label text-[11px] font-bold uppercase tracking-wider pl-1">Password</label>
-                <a className="text-secondary text-[11px] font-bold hover:underline" href="#">Forgot?</a>
               </div>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -61,17 +88,29 @@ export default function LoginPage() {
                   placeholder="••••••••"
                   required
                   type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
                 />
               </div>
             </div>
 
             {/* Action Button */}
             <button
-              className="w-full btn-gradient text-on-primary py-3.5 rounded-lg font-semibold tracking-tight text-sm active:scale-[0.98] transition-transform duration-150 flex items-center justify-center gap-2 group"
+              className="w-full btn-gradient text-on-primary py-3.5 rounded-lg font-semibold tracking-tight text-sm active:scale-[0.98] transition-transform duration-150 flex items-center justify-center gap-2 group disabled:opacity-60 disabled:cursor-not-allowed"
               type="submit"
+              disabled={loading}
             >
-              Sign in to Dashboard
-              <span className="material-symbols-outlined text-lg opacity-80 group-hover:translate-x-0.5 transition-transform">arrow_forward</span>
+              {loading ? (
+                <>
+                  <span className="material-symbols-outlined text-lg animate-spin">progress_activity</span>
+                  Signing in…
+                </>
+              ) : (
+                <>
+                  Sign in to Dashboard
+                  <span className="material-symbols-outlined text-lg opacity-80 group-hover:translate-x-0.5 transition-transform">arrow_forward</span>
+                </>
+              )}
             </button>
           </form>
         </div>

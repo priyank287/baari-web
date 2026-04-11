@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { mockDoctor } from '../mock/data'
+import queueApi from '../api/queueApi'
 
-const EMPTY = { name: '', phone: '', age: '', gender: '', note: '' }
+const EMPTY = { name: '', phone: '' }
 
 function validate(f) {
   const e = {}
@@ -9,17 +9,15 @@ function validate(f) {
     e.name = 'Name must be at least 2 characters'
   if (!/^\d{10}$/.test(f.phone))
     e.phone = 'Enter a valid 10-digit mobile number'
-  const age = parseInt(f.age, 10)
-  if (!f.age || isNaN(age) || age < 1 || age > 120)
-    e.age = 'Age must be between 1 and 120'
-  if (!f.gender)
-    e.gender = 'Please select a gender'
   return e
 }
 
-export default function AddPatientPanel({ open, onClose, onAdd }) {
-  const [fields, setFields] = useState(EMPTY)
-  const [errors, setErrors] = useState({})
+// session: SessionDto | null
+export default function AddPatientPanel({ open, session, onClose, onAdd }) {
+  const [fields, setFields]     = useState(EMPTY)
+  const [errors, setErrors]     = useState({})
+  const [submitting, setSubmitting] = useState(false)
+  const [apiError, setApiError] = useState('')
 
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : ''
@@ -32,7 +30,6 @@ export default function AddPatientPanel({ open, onClose, onAdd }) {
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }))
   }
 
-  // Strip non-digits and cap length for phone / age
   function handleNumericChange(name, maxLen) {
     return (e) => {
       const val = e.target.value.replace(/\D/g, '').slice(0, maxLen)
@@ -41,18 +38,30 @@ export default function AddPatientPanel({ open, onClose, onAdd }) {
     }
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     const errs = validate(fields)
     if (Object.keys(errs).length > 0) { setErrors(errs); return }
-    onAdd(fields)
-    setFields(EMPTY)
-    setErrors({})
+    if (!session) return
+
+    setSubmitting(true)
+    setApiError('')
+    try {
+      const entry = await queueApi.addToQueue(session.id, fields.name.trim(), fields.phone)
+      onAdd(entry)
+      setFields(EMPTY)
+      setErrors({})
+    } catch (err) {
+      setApiError(err.message)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function handleClose() {
     setFields(EMPTY)
     setErrors({})
+    setApiError('')
     onClose()
   }
 
@@ -61,10 +70,7 @@ export default function AddPatientPanel({ open, onClose, onAdd }) {
   return (
     <>
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-[60] bg-black/20 backdrop-blur-sm"
-        onClick={handleClose}
-      />
+      <div className="fixed inset-0 z-[60] bg-black/20 backdrop-blur-sm" onClick={handleClose} />
 
       {/* Slide panel */}
       <div className="fixed right-0 top-0 h-full w-full max-w-md z-[70] bg-surface-container-lowest shadow-2xl flex flex-col">
@@ -72,7 +78,11 @@ export default function AddPatientPanel({ open, onClose, onAdd }) {
         <div className="flex items-center justify-between px-8 py-6 border-b border-outline-variant/20 shrink-0">
           <div>
             <h2 className="text-xl font-bold tracking-tight text-on-surface">Add Patient</h2>
-            <p className="text-xs text-on-surface-variant mt-0.5">Register a walk-in for today's session</p>
+            <p className="text-xs text-on-surface-variant mt-0.5">
+              {session
+                ? `Adding to ${session.doctorName}'s queue`
+                : "Register a walk-in for today's session"}
+            </p>
           </div>
           <button
             type="button"
@@ -83,9 +93,15 @@ export default function AddPatientPanel({ open, onClose, onAdd }) {
           </button>
         </div>
 
-        {/* Form — wraps scroll area + footer so type="submit" works */}
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto px-8 py-6 space-y-5">
+
+            {apiError && (
+              <div className="flex items-center gap-2 bg-error/10 border border-error/20 text-error rounded-lg px-3 py-2 text-xs">
+                <span className="material-symbols-outlined text-base">error</span>
+                {apiError}
+              </div>
+            )}
 
             {/* Patient Name */}
             <div className="space-y-1.5">
@@ -122,73 +138,19 @@ export default function AddPatientPanel({ open, onClose, onAdd }) {
               {errors.phone && <FieldError msg={errors.phone} />}
             </div>
 
-            {/* Age + Gender */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* Session — read-only */}
+            {session && (
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant block">
-                  Age <span className="text-error">*</span>
+                  Attending Doctor
                 </label>
-                <input
-                  name="age"
-                  value={fields.age}
-                  onChange={handleNumericChange('age', 3)}
-                  placeholder="e.g. 34"
-                  inputMode="numeric"
-                  className={`w-full px-4 py-3 rounded-lg bg-surface-container-low text-sm text-on-surface placeholder:text-outline border-0 outline-none ring-2 transition-all ${
-                    errors.age ? 'ring-error' : 'ring-transparent focus:ring-secondary/30'
-                  }`}
-                />
-                {errors.age && <FieldError msg={errors.age} />}
+                <div className="w-full px-4 py-3 rounded-lg bg-surface-container text-sm text-on-surface-variant flex items-center gap-2 select-none">
+                  <span className="material-symbols-outlined text-sm">person</span>
+                  {session.doctorName}
+                  <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-outline">{session.departmentName}</span>
+                </div>
               </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant block">
-                  Gender <span className="text-error">*</span>
-                </label>
-                <select
-                  name="gender"
-                  value={fields.gender}
-                  onChange={handleChange}
-                  className={`w-full px-4 py-3 rounded-lg bg-surface-container-low text-sm text-on-surface border-0 outline-none ring-2 transition-all ${
-                    errors.gender ? 'ring-error' : 'ring-transparent focus:ring-secondary/30'
-                  }`}
-                >
-                  <option value="">Select</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-                {errors.gender && <FieldError msg={errors.gender} />}
-              </div>
-            </div>
-
-            {/* Doctor — pre-filled, read-only */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant block">
-                Attending Doctor
-              </label>
-              <div className="w-full px-4 py-3 rounded-lg bg-surface-container text-sm text-on-surface-variant flex items-center gap-2 select-none">
-                <span className="material-symbols-outlined text-sm">person</span>
-                {mockDoctor.name}
-                <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-outline">Pre-assigned</span>
-              </div>
-            </div>
-
-            {/* Visit Note — optional */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant block">
-                Visit Note
-                <span className="ml-1.5 text-outline text-[10px] font-normal normal-case tracking-normal">optional</span>
-              </label>
-              <textarea
-                name="note"
-                value={fields.note}
-                onChange={handleChange}
-                placeholder="Any notes for the doctor…"
-                rows={3}
-                className="w-full px-4 py-3 rounded-lg bg-surface-container-low text-sm text-on-surface placeholder:text-outline border-0 outline-none ring-2 ring-transparent focus:ring-secondary/30 transition-all resize-none"
-              />
-            </div>
+            )}
           </div>
 
           {/* Footer */}
@@ -202,10 +164,14 @@ export default function AddPatientPanel({ open, onClose, onAdd }) {
             </button>
             <button
               type="submit"
-              className="flex-1 py-3 rounded-lg bg-secondary text-white font-bold text-sm flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.98] transition-all"
+              disabled={submitting || !session}
+              className="flex-1 py-3 rounded-lg bg-secondary text-white font-bold text-sm flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-60"
             >
-              <span className="material-symbols-outlined text-sm">person_add</span>
-              Add to Queue
+              {submitting
+                ? <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                : <span className="material-symbols-outlined text-sm">person_add</span>
+              }
+              {submitting ? 'Adding…' : 'Add to Queue'}
             </button>
           </div>
         </form>

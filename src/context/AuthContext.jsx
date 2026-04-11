@@ -24,9 +24,12 @@ export function AuthProvider({ children }) {
     const data = await response.json()
 
     const userData = {
-      name:       data.name,
-      role:       data.role,
-      hospitalId: data.hospitalId,
+      name:         data.name,
+      role:         data.role,
+      hospitalId:   data.hospitalId,
+      hospitalName: data.hospitalName ?? null,
+      planType:     data.planType ?? null,
+      doctorId:     data.doctorId ?? null,
     }
 
     localStorage.setItem('baari_token', data.token)
